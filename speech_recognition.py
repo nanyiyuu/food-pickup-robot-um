@@ -1,94 +1,76 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
-
-"""
-    To run this script, you need to run the following lines in terminal:
-    - [Robot] $ roslaunch rchomeedu_vision multi_astra.launch
-    - [IO] $ roslaunch astra_camera astra.launch
-    - [Juno] $ roslaunch usb_cam usb_cam-test.launch
-    - roslaunch opencv_apps face_detection.launch image:=/camera/rgb/image_raw
-    - roslaunch kids_module say_hello.launch
-    - rosrun your_package speech_to_text_ros.py
-"""
 
 import rospy
-from std_msgs.msg import String
-from sound_play.libsoundplay import SoundClient
 import speech_recognition as sr
+from gtts import gTTS
+from playsound import playsound
+import os
+from std_msgs.msg import String
 import threading
 
-class SpeechToTextROS:
+class SpeechProcessingNode:
     def __init__(self):
-        # 初始化ROS节点
-        rospy.init_node('speech_to_text_ros', anonymous=True)
-        rospy.on_shutdown(self.cleanup)
-
-        # 初始化SoundClient用于语音播放
-        self.soundhandle = SoundClient()
-        rospy.sleep(1)  # 等待SoundClient连接
-        self.soundhandle.stopAll()
-        rospy.loginfo("SpeechToTextROS Node Initialized.")
-
-        # 创建发布者，将识别的文本发布到话题
-        self.text_pub = rospy.Publisher('/recognized_text', String, queue_size=10)
-
-        # 初始化语音识别器
+        rospy.init_node('speech_processing_node')
+        
+        # 获取参数或使用默认值
+        self.lang = rospy.get_param('~language', 'en')
+        self.tts_output_path = rospy.get_param('~tts_output_path', '/tmp/tts_output.mp3')
+        self.mpg_player = rospy.get_param('~mpg_player', 'mpg123')  # 如果继续使用 mpg123
+        
+        self.pub = rospy.Publisher('speech_to_text', String, queue_size=10)
+        rospy.Subscriber('text_to_speech', String, self.tts_callback)
+        rospy.loginfo("Speech Processing Node Initialized")
+        
         self.recognizer = sr.Recognizer()
         self.microphone = sr.Microphone()
 
-        # 设置全局标志，防止多线程访问冲突
-        self.lock = threading.Lock()
+        # Start speech recognition in a separate thread
+        self.listener_thread = threading.Thread(target=self.listen_to_speech)
+        self.listener_thread.daemon = True  # 确保线程在主线程退出时退出
+        self.listener_thread.start()
 
-        # 启动语音识别线程
-        self.stop_listening = self.recognizer.listen_in_background(self.microphone, self.callback)
-        rospy.loginfo("Started listening to microphone...")
-
-    def callback(self, recognizer, audio):
-        """
-        语音识别回调函数，当检测到音频时调用
-        """
-        with self.lock:
+    def listen_to_speech(self):
+        while not rospy.is_shutdown():
             try:
-                # 使用Google Web Speech API进行识别
-                text = recognizer.recognize_google(audio, language="en-US")
-                rospy.loginfo(f"Recognized Speech: {text}")
+                rospy.loginfo("Listening for speech...")
+                with self.microphone as source:
+                    self.recognizer.adjust_for_ambient_noise(source)
+                    audio = self.recognizer.listen(source, timeout=5, phrase_time_limit=10)
 
-                # 发布识别的文本
-                self.text_pub.publish(text)
+                # Recognize speech
+                text = self.recognizer.recognize_google(audio, language=self.lang)
+                rospy.loginfo(f"Recognized text: {text}")
+                self.pub.publish(text)
 
-                # 根据识别的文本执行相应操作
-                self.process_command(text)
-
+            except sr.WaitTimeoutError:
+                rospy.logwarn("Listening timed out while waiting for phrase to start")
             except sr.UnknownValueError:
-                rospy.logwarn("Google Speech Recognition could not understand audio")
+                rospy.logwarn("Could not understand the audio.")
             except sr.RequestError as e:
-                rospy.logerr(f"Could not request results from Google Speech Recognition service; {e}")
+                rospy.logerr(f"Speech Recognition service error: {e}")
+            except rospy.ROSInterruptException:
+                break
+            except Exception as e:
+                rospy.logerr(f"Unexpected error: {e}")
 
-    def process_command(self, text):
-        """
-        根据识别的文本执行相应操作
-        """
-        rospy.loginfo(f"Processing command: {text}")
-        if "hello" in text:
-            self.soundhandle.say("hello")
-        elif "whether" in text:
-            self.soundhandle.say("sorry")
-        elif "thank" in text:
-            self.soundhandle.say("thank")
-        else:
-            self.soundhandle.say("Sorry,I cannot understand")
+    def tts_callback(self, msg):
+        text = msg.data
+        rospy.loginfo(f"Converting text to speech: {text}")
+        self.text_to_speech(text)
 
-    def cleanup(self):
-        """
-        清理函数，在节点关闭时调用
-        """
-        rospy.loginfo("Shutting down SpeechToTextROS node...")
-        self.stop_listening(wait_for_stop=False)
-        self.soundhandle.stopAll()
+    def text_to_speech(self, text):
+        try:
+            tts = gTTS(text=text, lang=self.lang)
+            tts.save(self.tts_output_path)
+            rospy.loginfo("Playing the TTS audio.")
+            playsound(self.tts_output_path)
+            rospy.loginfo("Text-to-Speech completed.")
+        except Exception as e:
+            rospy.logerr(f"Failed to convert text to speech: {e}")
 
 if __name__ == "__main__":
     try:
-        SpeechToTextROS()
+        node = SpeechProcessingNode()
         rospy.spin()
     except rospy.ROSInterruptException:
         pass
