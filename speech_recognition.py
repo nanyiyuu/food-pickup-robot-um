@@ -49,8 +49,8 @@ class SpeechToTextROS:
         """
         with self.lock:
             try:
-                # 使用Google Web Speech API进行识别，设置语言为中文
-                text = recognizer.recognize_google(audio, language="zh-CN")
+                # 使用Google Web Speech API进行识别
+                text = recognizer.recognize_google(audio, language="en-US")
                 rospy.loginfo(f"Recognized Speech: {text}")
 
                 # 发布识别的文本
@@ -76,7 +76,7 @@ class SpeechToTextROS:
         elif "thank" in text:
             self.soundhandle.say("thank")
         else:
-            self.soundhandle.say("抱歉，我没有理解您的意思。")
+            self.soundhandle.say("Sorry,I cannot understand")
 
     def cleanup(self):
         """
