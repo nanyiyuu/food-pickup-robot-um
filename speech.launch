@@ -1,0 +1,16 @@
+<launch>
+    <!-- 启动pocketsphinx_ros语音识别节点 -->
+    <node pkg="pocketsphinx_ros" type="pocketsphinx_ros_node" name="pocketsphinx_ros_node" output="screen">
+        <!-- 配置语言模型和字典 -->
+        <param name="language_model" value="$(find pocketsphinx_ros)/models/en-us/en-us.lm.bin"/>
+        <param name="dictionary" value="$(find pocketsphinx_ros)/models/en-us/cmudict-en-us.dict"/>
+        <!-- 可选：设置解码器参数 -->
+        <!-- <param name="hmm" value="$(find pocketsphinx_ros)/models/en-us/en-us"/> -->
+    </node>
+
+    <!-- 启动语音处理节点 -->
+    <node pkg="speech_processing" type="speech_processing_node.py" name="speech_processing_node" output="screen"/>
+    
+    <!-- 启动sound_play节点 -->
+    <node pkg="sound_play" type="soundplay_node.py" name="sound_play" output="screen"/>
+</launch>
