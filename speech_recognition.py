@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-
+#https://github.com/cmusphinx/ros-pocketsphinx.git
 import rospy
 import speech_recognition as sr
 from gtts import gTTS
